@@ -18,3 +18,4 @@
 /.suf
 .history
 .vscode
+__pycache__
