@@ -102,7 +102,18 @@ boot_alloc(uint32_t n)
 	// to a multiple of PGSIZE.
 	//
 	// LAB 2: Your code here.
-
+	if (n > 0) {
+		if ((uint32_t)nextfree > (0xffffffff - n)) {
+			panic("out of memory");
+		}
+		result = nextfree;
+		nextfree += n;
+		nextfree = ROUNDUP(nextfree, PGSIZE);
+		return result;
+	}
+	else if (n == 0) {
+		return nextfree;
+	}
 	return NULL;
 }
 
@@ -125,7 +136,7 @@ mem_init(void)
 	i386_detect_memory();
 
 	// Remove this line when you're ready to test this function.
-	panic("mem_init: This function is not finished\n");
+	// panic("mem_init: This function is not finished\n");
 
 	//////////////////////////////////////////////////////////////////////
 	// create initial page directory.
@@ -148,6 +159,8 @@ mem_init(void)
 	// array.  'npages' is the number of physical pages in memory.  Use memset
 	// to initialize all fields of each struct PageInfo to 0.
 	// Your code goes here:
+	pages = (struct PageInfo *) boot_alloc(npages * sizeof(struct PageInfo));
+	memset(pages, 0, npages * sizeof(struct PageInfo));
 
 
 	//////////////////////////////////////////////////////////////////////
@@ -252,7 +265,37 @@ page_init(void)
 	// NB: DO NOT actually touch the physical memory corresponding to
 	// free pages!
 	size_t i;
-	for (i = 0; i < npages; i++) {
+
+	// page 0
+	pages[0].pp_ref = 1;
+	pages[0].pp_link = NULL;
+
+	// the rest of base memory
+	for (i = 1; i < npages_basemem; i++) {
+		pages[i].pp_ref = 0;
+		pages[i].pp_link = page_free_list;
+		page_free_list = &pages[i];
+	}
+
+	// IO hole
+	for (i = IOPHYSMEM >> 12; i < EXTPHYSMEM >> 12; i++) {
+		pages[i].pp_ref = 1;
+		pages[i].pp_link = NULL;
+	}
+
+	extern char end[];
+	physaddr_t end_of_kern = PADDR(ROUNDUP((char *) end, PGSIZE));
+	int size_of_table = ROUNDUP(npages * sizeof(struct PageInfo), PGSIZE) >> 12; 
+	int end_of_inuse_page = (end_of_kern >> 12) + 1 + size_of_table;
+
+	// in use extended memory
+	for (i = EXTPHYSMEM >> 12; i < end_of_inuse_page; i++) {
+		pages[i].pp_ref = 1;
+		pages[i].pp_link = NULL;
+	}
+
+	// free extended memory
+	for (i = end_of_inuse_page; i < npages; i++) {
 		pages[i].pp_ref = 0;
 		pages[i].pp_link = page_free_list;
 		page_free_list = &pages[i];
@@ -275,7 +318,18 @@ struct PageInfo *
 page_alloc(int alloc_flags)
 {
 	// Fill this function in
-	return 0;
+	if (page_free_list == NULL) 
+		return NULL;
+
+	struct PageInfo *victim = page_free_list;
+
+	page_free_list = victim->pp_link;
+	victim->pp_link = NULL;
+
+	if (alloc_flags & ALLOC_ZERO)
+		memset(page2kva(victim), 0, PGSIZE);
+
+	return victim;
 }
 
 //
@@ -288,6 +342,14 @@ page_free(struct PageInfo *pp)
 	// Fill this function in
 	// Hint: You may want to panic if pp->pp_ref is nonzero or
 	// pp->pp_link is not NULL.
+	if (pp->pp_ref)
+		panic("reference count non zero");
+
+	if (pp->pp_link)
+		panic("double free detected");
+
+	pp->pp_link = page_free_list;
+	page_free_list = pp;
 }
 
 //
