@@ -102,19 +102,12 @@ boot_alloc(uint32_t n)
 	// to a multiple of PGSIZE.
 	//
 	// LAB 2: Your code here.
-	if (n > 0) {
-		if ((uint32_t)nextfree > (0xffffffff - n)) {
-			panic("out of memory");
-		}
-		result = nextfree;
-		nextfree += n;
-		nextfree = ROUNDUP(nextfree, PGSIZE);
-		return result;
+	if ((uint32_t)nextfree - KERNBASE > (npages * PGSIZE - n)) {
+		panic("out of memory");
 	}
-	else if (n == 0) {
-		return nextfree;
-	}
-	return NULL;
+	result = nextfree;
+	nextfree = ROUNDUP(nextfree + n, PGSIZE);
+	return result;
 }
 
 // Set up a two-level page table:
@@ -501,10 +494,9 @@ page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 	// Fill this function in
 	pte_t *pte_ptr = pgdir_walk(pgdir, va, 0);
 
-	if (pte_store != NULL)
-		(*pte_store) = pte_ptr;
-
 	if (pte_ptr != NULL && (*pte_ptr) != 0) {
+		if (pte_store != NULL)
+			(*pte_store) = pte_ptr;
 		return pa2page(PTE_ADDR(*pte_ptr));
 	}
 
