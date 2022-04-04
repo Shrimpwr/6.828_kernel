@@ -177,7 +177,6 @@ mem_init(void)
 	//    - the new image at UPAGES -- kernel R, user R
 	//      (ie. perm = PTE_U | PTE_P)
 	//    - pages itself -- kernel RW, user NONE
-	// Your code goes here:
 	boot_map_region(kern_pgdir, UPAGES, PTSIZE, PADDR(pages), PTE_U);
 
 	//////////////////////////////////////////////////////////////////////
@@ -190,7 +189,6 @@ mem_init(void)
 	//       the kernel overflows its stack, it will fault rather than
 	//       overwrite memory.  Known as a "guard page".
 	//     Permissions: kernel RW, user NONE
-	// Your code goes here:
 	boot_map_region(kern_pgdir, KSTACKTOP - KSTKSIZE, KSTKSIZE, PADDR(bootstack), PTE_W);
 
 	//////////////////////////////////////////////////////////////////////
@@ -200,7 +198,6 @@ mem_init(void)
 	// We might not have 2^32 - KERNBASE bytes of physical memory, but
 	// we just set up the mapping anyway.
 	// Permissions: kernel RW, user NONE
-	// Your code goes here:
 	boot_map_region(kern_pgdir, KERNBASE, 0x0fffffff, 0, PTE_W);
 
 	// Check that the initial page directory has been set up correctly.
@@ -313,7 +310,6 @@ page_init(void)
 struct PageInfo *
 page_alloc(int alloc_flags)
 {
-	// Fill this function in
 	if (page_free_list == NULL) 
 		return NULL;
 
@@ -335,7 +331,6 @@ page_alloc(int alloc_flags)
 void
 page_free(struct PageInfo *pp)
 {
-	// Fill this function in
 	// Hint: You may want to panic if pp->pp_ref is nonzero or
 	// pp->pp_link is not NULL.
 	if (pp->pp_ref)
@@ -384,7 +379,6 @@ page_decref(struct PageInfo* pp)
 pte_t *
 pgdir_walk(pde_t *pgdir, const void *va, int create)
 {
-	// Fill this function in
 	pde_t pde = pgdir[PDX(va)];
 	pte_t *pgtbl_ptr;
 	pte_t *pte_ptr;
@@ -421,7 +415,6 @@ pgdir_walk(pde_t *pgdir, const void *va, int create)
 static void
 boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm)
 {
-	// Fill this function in
 	int cnt = size / PGSIZE;
 	if (size % PGSIZE) cnt++;
 	for (int i = 0; i < cnt; ++i) {
@@ -460,7 +453,6 @@ boot_map_region(pde_t *pgdir, uintptr_t va, size_t size, physaddr_t pa, int perm
 int
 page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 {
-	// Fill this function in
 	pte_t *pte_ptr = pgdir_walk(pgdir, va, 1);
 
 	if (pte_ptr == NULL)
@@ -491,7 +483,6 @@ page_insert(pde_t *pgdir, struct PageInfo *pp, void *va, int perm)
 struct PageInfo *
 page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 {
-	// Fill this function in
 	pte_t *pte_ptr = pgdir_walk(pgdir, va, 0);
 
 	if (pte_ptr != NULL && (*pte_ptr) != 0) {
@@ -521,14 +512,15 @@ page_lookup(pde_t *pgdir, void *va, pte_t **pte_store)
 void
 page_remove(pde_t *pgdir, void *va)
 {
-	// Fill this function in
 	pte_t *pte_ptr = NULL;
 	struct PageInfo *page = page_lookup(pgdir, va, &pte_ptr);
 
 	if (pte_ptr != NULL) {
-		(*pte_ptr) = 0;
+		if ((*pte_ptr) != 0) {
+			(*pte_ptr) = 0;
+			tlb_invalidate(pgdir, va);
+		}
 		page_decref(page);
-		tlb_invalidate(pgdir, va);
 	}
 }
 
