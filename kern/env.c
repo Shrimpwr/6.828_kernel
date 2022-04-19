@@ -366,7 +366,6 @@ load_icode(struct Env *e, uint8_t *binary)
 	// at virtual address USTACKTOP - PGSIZE.
 
 	region_alloc(e, (void *)(USTACKTOP - PGSIZE), PGSIZE);
-	e->env_tf.tf_esp = USTACKTOP;
 }
 
 //

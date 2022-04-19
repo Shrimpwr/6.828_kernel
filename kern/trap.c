@@ -155,7 +155,7 @@ trap_dispatch(struct Trapframe *tf)
 	switch (tf->tf_trapno) {
 	case T_BRKPT:
 		monitor(tf);
-		break;
+		return;
 	case T_PGFLT:
 		page_fault_handler(tf);
 		break;
