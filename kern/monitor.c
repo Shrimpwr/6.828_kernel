@@ -11,6 +11,7 @@
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
 #include <kern/trap.h>
+#include <kern/pmap.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
@@ -25,6 +26,10 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{ "backtrace", "Display stack backtrace", mon_backtrace },
+	{ "showmappings", "Display physical page mappings", mon_showmappings},
+	{ "setpermbits", "Set, clear, or change the permissions of any mapping in the current address space", mon_setpermbits},
+	{ "dumpmem", "Dump the contents of a range of memory given either a virtual or physical address range", mon_dumpmem},
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -58,10 +63,150 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf)
 int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
-	// Your code here.
+	cprintf("Stack backtrace:\n");
+	uint32_t cur_ebp, cur_eip;
+	struct Eipdebuginfo info;
+
+	cur_ebp = read_ebp();
+	while (cur_ebp) {
+		cprintf("  ebp %08x  eip %08x  args %08x %08x %08x %08x %08x\n",
+			cur_ebp, ((uint32_t *)cur_ebp)[1], ((uint32_t *)cur_ebp)[2], ((uint32_t *)cur_ebp)[3],
+			((uint32_t *)cur_ebp)[4], ((uint32_t *)cur_ebp)[5], ((uint32_t *)cur_ebp)[6], ((uint32_t *)cur_ebp)[7]);
+
+		cur_eip = ((uint32_t *)cur_ebp)[1];
+		debuginfo_eip(cur_eip, &info);
+		cprintf("         %s:%d: %.*s+%d\n", info.eip_file, info.eip_line, info.eip_fn_namelen, info.eip_fn_name, cur_eip - info.eip_fn_addr);
+
+		cur_ebp = ((uint32_t *)cur_ebp)[0];
+	}
 	return 0;
 }
 
+int
+mon_showmappings(int argc, char **argv, struct Trapframe *tf)
+{
+	if (argc != 3 && argc != 2) {
+		cprintf("Wrong number of arguments.\n");
+		cprintf("Usage: showmappings begin_vaddr [end_vaddr]\n");
+		return 1;
+	}
+
+	int begin, end;
+	struct PageInfo *pp;
+	pte_t *pptr;
+	char buf[15];
+
+	begin = ROUNDDOWN((uint32_t)strtol(argv[1], NULL, 16), PGSIZE);
+	if (argc == 2)
+		end = begin;
+	else
+		end = ROUNDDOWN((uint32_t)strtol(argv[2], NULL, 16), PGSIZE);
+
+	if (begin > 0xf7ffffff || end > 0xf7ffffff) {
+		cprintf("Virtual Address out of range.\n");
+		return 1;
+	}
+
+	cprintf("%8s\t%8s\t%12s\n", "VA", "PA", "PERMBITS");
+	for (; begin <= end; begin += PGSIZE) {
+		pp = page_lookup(kern_pgdir, (void *)begin, &pptr);
+		if (pp != NULL) {
+			pageperm2str(*pptr, buf);
+			cprintf("%08x\t%08x\t%12s\n", begin, page2pa(pp), buf);
+		}
+		else
+			cprintf("%08x\t%8s\t%12s\n", begin, "none", "none", "none");
+	}
+	return 0;
+}
+
+int
+mon_setpermbits(int argc, char **argv, struct Trapframe *tf) {
+	if (argc != 3) {
+		cprintf("Wrong number of arguments.\n");
+		cprintf("Usage: setpermbits +/-permbits vaddr\n");
+		return 1;
+	}
+
+	int begin;
+	struct PageInfo *pp;
+	pte_t *pptr, pte;
+	char buf_old[15], buf_new[15];
+
+   	begin = ROUNDDOWN((uint32_t) strtol(argv[2], NULL, 0), PGSIZE);
+
+	if (begin > 0xf7ffffff) {
+		cprintf("Virtual Address out of range.\n");
+		return 1;
+	}
+
+	pp = page_lookup(kern_pgdir, (void *)begin, &pptr);
+
+	if (pp == NULL) {
+		cprintf("No mpping exists.\n");
+		return 1;
+	}
+
+	pte = *pptr;
+	if (*argv[1] == '+') 
+		*pptr |= str2pageperm(argv[1] + 1);
+	else if (*argv[1] == '-')
+		*pptr &= ~str2pageperm(argv[1] + 1);
+
+	cprintf("Virtual\t\tPhysical\tOld Priority\tNew Priority\t\n");
+	cprintf("%08x\t%08x\t%12s\t%12s\n", begin, page2pa(pp), pageperm2str(pte, buf_old), pageperm2str(*pptr, buf_new));
+
+	return 0;
+}
+
+int mon_dumpmem(int argc, char **argv, struct Trapframe *tf) {
+	if (argc != 4) {
+		cprintf("Wrong number of arguments.\n");
+		cprintf("Usage: dumpmem -p/v begin_addr end_addr\n");
+		return 1;
+	}
+
+	int begin, end;
+
+   	begin = (uint32_t) strtol(argv[2], NULL, 0);
+   	end = (uint32_t) strtol(argv[3], NULL, 0);
+
+	if (argv[1][1] == 'p') {
+		if ((PGNUM(begin) >= npages) || (PGNUM(end) >= npages)) {
+            cprintf("Physical address out of range.\n");
+            return 1;
+        }
+        begin = (uint32_t) KADDR(begin);
+        end = (uint32_t) KADDR(end);
+	}
+
+	if (begin >= 0xf7ffffff || end >= 0xf7ffffff) {
+		cprintf("Virtual address out of range.\n");
+		return 1;
+	}
+
+	cprintf("Virtual\t\tPhysical\tMemory Contents\n");
+    while (begin <= end) {
+        int i;
+        pte_t *pptr;
+
+        cprintf("%08x\t", begin);
+        if (page_lookup(kern_pgdir, (void *) begin, &pptr) == NULL || *pptr == 0) {
+            cprintf("No Mapping\n");
+            begin += PGSIZE - begin % PGSIZE;
+            continue;
+        }
+
+        cprintf("%08x\t", PTE_ADDR(*pptr) | PGOFF(begin));
+
+        for (i = 0; i < 16; i++, begin++)
+            cprintf("%02x ", *(unsigned char *) begin);
+
+        cprintf("\n");
+    }
+
+	return 0;
+}
 
 
 /***** Kernel monitor command interpreter *****/
