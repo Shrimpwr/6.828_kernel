@@ -30,14 +30,6 @@ sched_yield(void)
 	// below to halt the cpu.
 
 	// LAB 4: Your code here.
-	// int i = (curenv) ? (curenv - envs) : 0;
-	// int j = 0;
-
-	// for (; envs[i].env_status != ENV_RUNNABLE && j != NENV; i = (i + 1) % NENV, j++);
-
-	// if (envs[i].env_status == ENV_RUNNABLE || (j == NENV && envs[i].env_status == ENV_RUNNING)) {
-	// 	env_run(&envs[i]);
-	// }
 
 	int i, j, start;
 
