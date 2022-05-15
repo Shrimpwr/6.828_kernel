@@ -53,8 +53,18 @@ umain(int argc, char **argv)
 			panic("reading testshell.key: %e", n2);
 		if (n1 == 0 && n2 == 0)
 			break;
-		if (n1 != 1 || n2 != 1 || c1 != c2)
+		if (n1 != 1) {
+			cprintf("1\n");
 			wrong(rfd, kfd, nloff);
+		}
+		if (n2 != 1) {
+			cprintf("2\n");
+			wrong(rfd, kfd, nloff);
+		}
+		if (c1 != c2) {
+			cprintf("3, %c, %c\n", c1, c2);
+			wrong(rfd, kfd, nloff);
+		}
 		if (c1 == '\n')
 			nloff = off+1;
 	}
