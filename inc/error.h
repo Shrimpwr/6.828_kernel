@@ -26,6 +26,9 @@ enum {
 	E_NOT_EXEC	,	// File not a valid executable
 	E_NOT_SUPP	,	// Operation not supported
 
+	E_TXDR_FULL	,	// transmit descriptor ring full
+	E_RXDR_EMPTY ,	// transmit descriptor ring full
+
 	MAXERROR
 };
 

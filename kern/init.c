@@ -16,6 +16,7 @@
 #include <kern/spinlock.h>
 #include <kern/time.h>
 #include <kern/pci.h>
+#include <kern/e1000.h>
 
 static void boot_aps(void);
 
@@ -67,7 +68,8 @@ i386_init(void)
 	ENV_CREATE(TEST, ENV_TYPE_USER);
 #else
 	// Touch all you want.
-	ENV_CREATE(user_yield, ENV_TYPE_USER);
+	char testbuf[10] = "abcd";
+	tx_send_packet(testbuf, 4);
 #endif // TEST*
 
 	// Should not be necessary - drains keyboard because interrupt has given up.
